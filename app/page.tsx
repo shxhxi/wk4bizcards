@@ -1,75 +1,57 @@
 import { connection } from 'next/server';
 import { createSupabaseServerClient } from '../lib/supabase/server';
 import CardsDirectory from '../components/cards-directory';
+import type { Category, CardRow, CardRowFromQuery } from '../lib/types';
 
-type Category = {
-  id: string;
-  name: string;
-  color: string;
-};
-
-type CardRowFromQuery = {
-  id: string;
-  name: string;
-  title: string;
-  company: string;
-  phone: string | null;
-  email: string;
-  website: string | null;
-  category_id: string | null;
-  categories: Category | Category[] | null;
-};
-
-type CardRow = {
-  id: string;
-  name: string;
-  title: string;
-  company: string;
-  phone: string | null;
-  email: string;
-  website: string | null;
-  category_id: string | null;
-  categories: Category | null;
-};
+function normalizeCard(card: CardRowFromQuery): CardRow {
+  return {
+    ...card,
+    categories: Array.isArray(card.categories)
+      ? (card.categories[0] ?? null)
+      : card.categories,
+  };
+}
 
 export default async function HomePage() {
   await connection();
 
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
 
-  const [{ data: cardsData, error: cardsError }, { data: categoriesData, error: categoriesError }] =
-    await Promise.all([
-      supabase
-        .from('cards')
-        .select(
-          `
-            id,
-            name,
-            title,
-            company,
-            phone,
-            email,
-            website,
-            category_id,
-            categories:category_id (
-              id,
-              name,
-              color
-            )
-          `
-        )
-        .order('name', { ascending: true }),
-      supabase
-        .from('categories')
-        .select(
-          `
+  const [
+    { data: cardsData, error: cardsError },
+    { data: categoriesData, error: categoriesError },
+  ] = await Promise.all([
+    supabase
+      .from('cards')
+      .select(
+        `
+          id,
+          name,
+          title,
+          company,
+          phone,
+          email,
+          website,
+          category_id,
+          categories:category_id (
             id,
             name,
             color
-          `
-        )
-        .order('name', { ascending: true }),
-    ]);
+          )
+        `
+      )
+      .order('name', { ascending: true }),
+    supabase
+      .from('categories')
+      .select(
+        `
+          id,
+          name,
+          color
+        `
+      )
+      .order('name', { ascending: true }),
+  ]);
 
   if (cardsError) {
     throw new Error(cardsError.message);
@@ -79,13 +61,7 @@ export default async function HomePage() {
     throw new Error(categoriesError.message);
   }
 
-  const cards: CardRow[] = ((cardsData ?? []) as CardRowFromQuery[]).map((card) => ({
-    ...card,
-    categories: Array.isArray(card.categories)
-      ? (card.categories[0] ?? null)
-      : card.categories,
-  }));
-
+  const cards: CardRow[] = ((cardsData ?? []) as CardRowFromQuery[]).map(normalizeCard);
   const categories: Category[] = (categoriesData ?? []) as Category[];
 
   return (

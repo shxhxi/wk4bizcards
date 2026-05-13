@@ -4,7 +4,7 @@ import ThemeToggle from '../components/theme-toggle';
 import AuthStatus from '../components/auth-status';
 
 export const metadata: Metadata = {
-  title: 'WK3 Biz Cards',
+  title: 'WK4 Biz Cards',
   description: 'Business card directory',
 };
 

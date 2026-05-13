@@ -1,55 +1,43 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase/client';
-
-type Category = {
-  id: string;
-  name: string;
-  color: string;
-};
-
-type CardRow = {
-  id: string;
-  name: string;
-  title: string;
-  company: string;
-  phone: string | null;
-  email: string;
-  website: string | null;
-  category_id: string | null;
-  categories: Category | null;
-};
+import { isAdminUser } from '../lib/auth';
+import {
+  EMPTY_FORM,
+  FIELD_CLASS,
+  TAILWIND_CATEGORY_CLASS_SAFELIST,
+} from '../lib/constants';
+import type {
+  Category,
+  CardFormData,
+  CardRow,
+  CardWritePayload,
+} from '../lib/types';
 
 type Props = {
   initialCards: CardRow[];
   categories: Category[];
 };
 
-const EMPTY_FORM = {
-  name: '',
-  title: '',
-  company: '',
-  email: '',
-  phone: '',
-  website: '',
-  category_id: '',
+type InputFieldProps = {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  type?: 'text' | 'email';
+  required?: boolean;
+  className?: string;
 };
 
-const TAILWIND_CATEGORY_CLASS_SAFELIST = [
-  'bg-blue-100 text-blue-800',
-  'bg-green-100 text-green-800',
-  'bg-amber-100 text-amber-800',
-  'bg-indigo-100 text-indigo-800',
-  'bg-orange-100 text-orange-800',
-  'bg-purple-100 text-purple-800',
-  'bg-teal-100 text-teal-800',
-  'bg-gray-100 text-gray-800',
-  'bg-slate-100 text-slate-800',
-  'bg-pink-100 text-pink-800',
-] as const;
-
-const ADMIN_EMAIL = (process.env.NEXT_PUBLIC_ADMIN_EMAIL ?? '').trim().toLowerCase();
+type SelectFieldProps = {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  categories: Category[];
+  required?: boolean;
+};
 
 function sortCards(cards: CardRow[]) {
   return [...cards].sort((a, b) => a.name.localeCompare(b.name));
@@ -76,6 +64,28 @@ function normalizeWebsiteInput(value: string) {
 
 function getPhoneHref(phone: string) {
   return `tel:${phone.replace(/[^\d+]/g, '')}`;
+}
+
+function buildCardPayload(formData: CardFormData): CardWritePayload {
+  return {
+    name: formData.name.trim(),
+    title: formData.title.trim(),
+    company: formData.company.trim(),
+    email: formData.email.trim(),
+    phone: formData.phone.trim() || null,
+    website: normalizeWebsiteInput(formData.website),
+    category_id: formData.category_id.trim(),
+  };
+}
+
+function isPayloadValid(payload: CardWritePayload) {
+  return !!(
+    payload.name &&
+    payload.title &&
+    payload.company &&
+    payload.email &&
+    payload.category_id
+  );
 }
 
 function PlusIcon() {
@@ -133,18 +143,78 @@ function TrashIcon() {
   );
 }
 
+function InputField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = 'text',
+  required = false,
+  className = '',
+}: InputFieldProps) {
+  return (
+    <div className={className}>
+      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+        {label}
+        {required ? ' *' : ''}
+      </label>
+      <input
+        type={type}
+        className={FIELD_CLASS}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+      />
+    </div>
+  );
+}
+
+function SelectField({
+  label,
+  value,
+  onChange,
+  categories,
+  required = false,
+}: SelectFieldProps) {
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+        {label}
+        {required ? ' *' : ''}
+      </label>
+      <select
+        className={FIELD_CLASS}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        <option value="">Select a category</option>
+        {categories.map((category) => (
+          <option key={category.id} value={category.id}>
+            {category.name}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 export default function CardsDirectory({ initialCards, categories }: Props) {
-  const [cards, setCards] = useState<CardRow[]>(sortCards(initialCards));
+  const [cards, setCards] = useState<CardRow[]>(() => sortCards(initialCards));
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
 
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editFormData, setEditFormData] = useState<any>({});
+  const [editFormData, setEditFormData] = useState<CardFormData>(EMPTY_FORM);
+  const [savingId, setSavingId] = useState<string | null>(null);
 
   const [showAddForm, setShowAddForm] = useState(false);
-  const [addFormData, setAddFormData] = useState(EMPTY_FORM);
+  const [addFormData, setAddFormData] = useState<CardFormData>(EMPTY_FORM);
   const [adding, setAdding] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setCards(sortCards(initialCards));
+  }, [initialCards]);
 
   useEffect(() => {
     const syncUser = async () => {
@@ -166,8 +236,15 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const isAdmin =
-    !!user?.email && !!ADMIN_EMAIL && user.email.toLowerCase() === ADMIN_EMAIL;
+  const categoriesById = useMemo<Record<string, Category>>(
+    () =>
+      Object.fromEntries(
+        categories.map((category) => [category.id, category])
+      ) as Record<string, Category>,
+    [categories]
+  );
+
+  const isAdmin = isAdminUser(user?.email);
 
   useEffect(() => {
     if (!isAdmin) {
@@ -182,50 +259,43 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
   }, [cards, selectedCategory]);
 
   const selectedAddCategory =
-    categories.find((category) => category.id === addFormData.category_id) ?? null;
+    addFormData.category_id ? categoriesById[addFormData.category_id] ?? null : null;
 
   const selectedEditCategory =
-    categories.find((category) => category.id === editFormData.category_id) ?? null;
+    editFormData.category_id ? categoriesById[editFormData.category_id] ?? null : null;
 
   const handleEditClick = (card: CardRow) => {
     setEditingId(card.id);
     setEditFormData({
-      id: card.id,
       name: card.name,
       title: card.title,
       company: card.company,
       email: card.email,
       phone: card.phone ?? '',
       website: card.website ?? '',
-      category_id: card.category_id ?? '',
+      category_id: card.category_id,
     });
   };
 
   const handleSave = async (id: string) => {
-    const payload = {
-      name: editFormData.name?.trim() ?? '',
-      title: editFormData.title?.trim() ?? '',
-      company: editFormData.company?.trim() ?? '',
-      email: editFormData.email?.trim() ?? '',
-      phone: editFormData.phone?.trim() || null,
-      website: normalizeWebsiteInput(editFormData.website ?? ''),
-      category_id: editFormData.category_id || null,
-    };
+    const payload = buildCardPayload(editFormData);
 
-    if (!payload.name || !payload.title || !payload.company || !payload.email) {
-      alert('Name, title, company, and email are required.');
+    if (!isPayloadValid(payload)) {
+      alert('Name, title, company, email, and category are required.');
       return;
     }
+
+    setSavingId(id);
 
     const { error } = await supabase.from('cards').update(payload).eq('id', id);
 
     if (error) {
       alert(`Update failed: ${error.message}`);
+      setSavingId(null);
       return;
     }
 
-    const category =
-      categories.find((item) => item.id === payload.category_id) ?? null;
+    const category = categoriesById[payload.category_id] ?? null;
 
     setCards((prev) =>
       sortCards(
@@ -241,22 +311,15 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
       )
     );
 
+    setSavingId(null);
     setEditingId(null);
   };
 
   const handleAdd = async () => {
-    const payload = {
-      name: addFormData.name.trim(),
-      title: addFormData.title.trim(),
-      company: addFormData.company.trim(),
-      email: addFormData.email.trim(),
-      phone: addFormData.phone.trim() || null,
-      website: normalizeWebsiteInput(addFormData.website),
-      category_id: addFormData.category_id || null,
-    };
+    const payload = buildCardPayload(addFormData);
 
-    if (!payload.name || !payload.title || !payload.company || !payload.email) {
-      alert('Name, title, company, and email are required.');
+    if (!isPayloadValid(payload)) {
+      alert('Name, title, company, email, and category are required.');
       return;
     }
 
@@ -285,8 +348,7 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
       return;
     }
 
-    const category =
-      categories.find((item) => item.id === payload.category_id) ?? null;
+    const category = categoriesById[payload.category_id] ?? null;
 
     setCards((prev) =>
       sortCards([
@@ -353,124 +415,68 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
           </h2>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-                Name *
-              </label>
-              <input
-                className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
-                value={addFormData.name}
-                onChange={(e) =>
-                  setAddFormData({ ...addFormData, name: e.target.value })
-                }
-                placeholder="Full Name"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-                Title *
-              </label>
-              <input
-                className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
-                value={addFormData.title}
-                onChange={(e) =>
-                  setAddFormData({ ...addFormData, title: e.target.value })
-                }
-                placeholder="Job Title"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-                Company *
-              </label>
-              <input
-                className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
-                value={addFormData.company}
-                onChange={(e) =>
-                  setAddFormData({ ...addFormData, company: e.target.value })
-                }
-                placeholder="Company Name"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-                Category
-              </label>
-              <select
-                className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
-                value={addFormData.category_id}
-                onChange={(e) =>
-                  setAddFormData({
-                    ...addFormData,
-                    category_id: e.target.value,
-                  })
-                }
-              >
-                <option value="">Select a category</option>
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
-
-              {selectedAddCategory ? (
-                <div className="mt-2">
-                  <span
-                    className={`inline-flex rounded-lg px-3 py-1 text-xs font-semibold ${selectedAddCategory.color}`}
-                  >
-                    {selectedAddCategory.name}
-                  </span>
-                </div>
-              ) : null}
-            </div>
-
-            <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-                Email *
-              </label>
-              <input
-                type="email"
-                className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
-                value={addFormData.email}
-                onChange={(e) =>
-                  setAddFormData({ ...addFormData, email: e.target.value })
-                }
-                placeholder="email@example.com"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-                Phone
-              </label>
-              <input
-                className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
-                value={addFormData.phone}
-                onChange={(e) =>
-                  setAddFormData({ ...addFormData, phone: e.target.value })
-                }
-                placeholder="(925) 555-0101"
-              />
-            </div>
-
-            <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-                Website
-              </label>
-              <input
-                className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
-                value={addFormData.website}
-                onChange={(e) =>
-                  setAddFormData({ ...addFormData, website: e.target.value })
-                }
-                placeholder="https://example.com"
-              />
-            </div>
+            <InputField
+              label="Name"
+              required
+              value={addFormData.name}
+              onChange={(value) => setAddFormData({ ...addFormData, name: value })}
+              placeholder="Full Name"
+            />
+            <InputField
+              label="Title"
+              required
+              value={addFormData.title}
+              onChange={(value) => setAddFormData({ ...addFormData, title: value })}
+              placeholder="Job Title"
+            />
+            <InputField
+              label="Company"
+              required
+              value={addFormData.company}
+              onChange={(value) => setAddFormData({ ...addFormData, company: value })}
+              placeholder="Company Name"
+            />
+            <SelectField
+              label="Category"
+              required
+              value={addFormData.category_id}
+              onChange={(value) =>
+                setAddFormData({ ...addFormData, category_id: value })
+              }
+              categories={categories}
+            />
+            <InputField
+              label="Email"
+              required
+              type="email"
+              value={addFormData.email}
+              onChange={(value) => setAddFormData({ ...addFormData, email: value })}
+              placeholder="email@example.com"
+            />
+            <InputField
+              label="Phone"
+              value={addFormData.phone}
+              onChange={(value) => setAddFormData({ ...addFormData, phone: value })}
+              placeholder="(925) 555-0101"
+            />
+            <InputField
+              label="Website"
+              value={addFormData.website}
+              onChange={(value) => setAddFormData({ ...addFormData, website: value })}
+              placeholder="https://example.com"
+              className="sm:col-span-2"
+            />
           </div>
+
+          {selectedAddCategory ? (
+            <div className="mt-2">
+              <span
+                className={`inline-flex rounded-lg px-3 py-1 text-xs font-semibold ${selectedAddCategory.color}`}
+              >
+                {selectedAddCategory.name}
+              </span>
+            </div>
+          ) : null}
 
           {addFormData.name.trim() ? (
             <div className="mt-5 flex items-center gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-950">
@@ -550,6 +556,7 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
           {filteredCards.map((card) => {
             const isEditing = editingId === card.id;
             const isDeleting = deletingId === card.id;
+            const isSaving = savingId === card.id;
 
             return (
               <article
@@ -562,65 +569,47 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
                     alt={`${card.name} avatar`}
                     width={72}
                     height={72}
+                    loading="lazy"
+                    decoding="async"
                     className="h-[72px] w-[72px] rounded-2xl border border-black/5 bg-gradient-to-br from-sky-100 to-violet-100 shadow-sm dark:border-white/10 dark:from-sky-500/10 dark:to-violet-500/10"
                   />
 
                   <div className="min-w-0 flex-1">
                     {isEditing ? (
                       <div className="space-y-3">
-                        <input
-                          className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
-                          value={editFormData.name ?? ''}
-                          onChange={(e) =>
-                            setEditFormData({
-                              ...editFormData,
-                              name: e.target.value,
-                            })
+                        <InputField
+                          label="Name"
+                          value={editFormData.name}
+                          onChange={(value) =>
+                            setEditFormData({ ...editFormData, name: value })
                           }
                           placeholder="Name"
                         />
-
-                        <input
-                          className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
-                          value={editFormData.title ?? ''}
-                          onChange={(e) =>
-                            setEditFormData({
-                              ...editFormData,
-                              title: e.target.value,
-                            })
+                        <InputField
+                          label="Title"
+                          value={editFormData.title}
+                          onChange={(value) =>
+                            setEditFormData({ ...editFormData, title: value })
                           }
                           placeholder="Title"
                         />
-
-                        <input
-                          className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
-                          value={editFormData.company ?? ''}
-                          onChange={(e) =>
-                            setEditFormData({
-                              ...editFormData,
-                              company: e.target.value,
-                            })
+                        <InputField
+                          label="Company"
+                          value={editFormData.company}
+                          onChange={(value) =>
+                            setEditFormData({ ...editFormData, company: value })
                           }
                           placeholder="Company"
                         />
-
-                        <select
-                          className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
-                          value={editFormData.category_id ?? ''}
-                          onChange={(e) =>
-                            setEditFormData({
-                              ...editFormData,
-                              category_id: e.target.value,
-                            })
+                        <SelectField
+                          label="Category"
+                          required
+                          value={editFormData.category_id}
+                          onChange={(value) =>
+                            setEditFormData({ ...editFormData, category_id: value })
                           }
-                        >
-                          <option value="">Select a category</option>
-                          {categories.map((category) => (
-                            <option key={category.id} value={category.id}>
-                              {category.name}
-                            </option>
-                          ))}
-                        </select>
+                          categories={categories}
+                        />
 
                         {selectedEditCategory ? (
                           <div>
@@ -632,39 +621,28 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
                           </div>
                         ) : null}
 
-                        <input
+                        <InputField
+                          label="Email"
                           type="email"
-                          className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
-                          value={editFormData.email ?? ''}
-                          onChange={(e) =>
-                            setEditFormData({
-                              ...editFormData,
-                              email: e.target.value,
-                            })
+                          value={editFormData.email}
+                          onChange={(value) =>
+                            setEditFormData({ ...editFormData, email: value })
                           }
                           placeholder="Email"
                         />
-
-                        <input
-                          className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
-                          value={editFormData.phone ?? ''}
-                          onChange={(e) =>
-                            setEditFormData({
-                              ...editFormData,
-                              phone: e.target.value,
-                            })
+                        <InputField
+                          label="Phone"
+                          value={editFormData.phone}
+                          onChange={(value) =>
+                            setEditFormData({ ...editFormData, phone: value })
                           }
                           placeholder="Phone"
                         />
-
-                        <input
-                          className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
-                          value={editFormData.website ?? ''}
-                          onChange={(e) =>
-                            setEditFormData({
-                              ...editFormData,
-                              website: e.target.value,
-                            })
+                        <InputField
+                          label="Website"
+                          value={editFormData.website}
+                          onChange={(value) =>
+                            setEditFormData({ ...editFormData, website: value })
                           }
                           placeholder="https://example.com"
                         />
@@ -673,9 +651,10 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
                           <button
                             type="button"
                             onClick={() => handleSave(card.id)}
-                            className="rounded-full bg-sky-600 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-sky-700"
+                            disabled={isSaving}
+                            className="rounded-full bg-sky-600 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-sky-700 disabled:opacity-50"
                           >
-                            Save
+                            {isSaving ? 'Saving...' : 'Save'}
                           </button>
 
                           <button
@@ -689,7 +668,7 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
                       </div>
                     ) : (
                       <>
-                        <div className="flex items-start gap-3">
+                        <div className="flex items-start gap-2">
                           <h2 className="min-w-0 flex-1 truncate text-xl font-semibold tracking-tight">
                             {card.name}
                           </h2>
@@ -701,6 +680,31 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
                               {card.categories.name}
                             </span>
                           ) : null}
+
+                          {isAdmin ? (
+                            <div className="flex shrink-0 items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleEditClick(card)}
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 text-sky-700 transition hover:bg-sky-600 hover:text-white dark:bg-zinc-800 dark:text-sky-300 dark:hover:bg-sky-500 dark:hover:text-white"
+                                aria-label={`Edit ${card.name}`}
+                                title={`Edit ${card.name}`}
+                              >
+                                <PencilIcon />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(card.id, card.name)}
+                                disabled={isDeleting}
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 text-red-600 transition hover:bg-red-600 hover:text-white disabled:opacity-50 dark:bg-zinc-800 dark:text-red-400 dark:hover:bg-red-500 dark:hover:text-white"
+                                aria-label={`Delete ${card.name}`}
+                                title={`Delete ${card.name}`}
+                              >
+                                <TrashIcon />
+                              </button>
+                            </div>
+                          ) : null}
                         </div>
 
                         <p className="mt-1 text-sm font-medium text-zinc-700 dark:text-zinc-300">
@@ -710,31 +714,6 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
                         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
                           {card.company}
                         </p>
-
-                        {isAdmin ? (
-                          <div className="mt-3 flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handleEditClick(card)}
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-zinc-100 text-sky-700 transition hover:bg-sky-600 hover:text-white dark:bg-zinc-800 dark:text-sky-300 dark:hover:bg-sky-500 dark:hover:text-white"
-                              aria-label={`Edit ${card.name}`}
-                              title={`Edit ${card.name}`}
-                            >
-                              <PencilIcon />
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => handleDelete(card.id, card.name)}
-                              disabled={isDeleting}
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-zinc-100 text-red-600 transition hover:bg-red-600 hover:text-white disabled:opacity-50 dark:bg-zinc-800 dark:text-red-400 dark:hover:bg-red-500 dark:hover:text-white"
-                              aria-label={`Delete ${card.name}`}
-                              title={`Delete ${card.name}`}
-                            >
-                              <TrashIcon />
-                            </button>
-                          </div>
-                        ) : null}
                       </>
                     )}
                   </div>

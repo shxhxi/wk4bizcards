@@ -37,10 +37,12 @@ export default function AuthStatus() {
   }, []);
 
   const handleSignIn = async () => {
+    const redirectTo = `${window.location.origin}/auth/callback`;
+
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo,
       },
     });
 

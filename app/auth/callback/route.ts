@@ -1,54 +1,65 @@
 import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import type { Database } from '../../../lib/database.types';
 
-export async function GET(request: Request) {
-  try {
-    const requestUrl = new URL(request.url);
-    const code = requestUrl.searchParams.get('code');
-    const next = requestUrl.searchParams.get('next') ?? '/';
-    const origin = requestUrl.origin;
-    const forwardedHost = request.headers.get('x-forwarded-host');
-    const isLocalEnv = process.env.NODE_ENV === 'development';
-
-    if (code) {
-      const cookieStore = await cookies();
-
-      const supabase = createServerClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
-        {
-          cookies: {
-            get(name: string) {
-              return cookieStore.get(name)?.value;
-            },
-            set(name: string, value: string, options: any) {
-              cookieStore.set({ name, value, ...options });
-            },
-            remove(name: string, options: any) {
-              cookieStore.delete({ name, ...options });
-            },
-          },
-        }
-      );
-
-      const { error } = await supabase.auth.exchangeCodeForSession(code);
-
-      if (!error) {
-        if (isLocalEnv) {
-          return NextResponse.redirect(`${origin}${next}`);
-        }
-
-        if (forwardedHost) {
-          return NextResponse.redirect(`https://${forwardedHost}${next}`);
-        }
-
-        return NextResponse.redirect(`${origin}${next}`);
-      }
-    }
-  } catch (err) {
-    console.error('Callback Crash:', err);
+function getRedirectOrigin(request: NextRequest) {
+  const devOrigin = process.env.NEXT_PUBLIC_DEV_REDIRECT_ORIGIN?.trim();
+  if (devOrigin) {
+    return devOrigin.replace(/\/$/, '');
   }
 
-  return NextResponse.redirect(new URL('/', request.url));
+  const forwardedHost = request.headers.get('x-forwarded-host');
+  const forwardedProto = request.headers.get('x-forwarded-proto') ?? 'https';
+
+  if (forwardedHost) {
+    const cleanHost = forwardedHost.split(',')[0].trim().replace(/:3000$/, '');
+    return `${forwardedProto}://${cleanHost}`;
+  }
+
+  return request.nextUrl.origin;
+}
+
+export async function GET(request: NextRequest) {
+  const code = request.nextUrl.searchParams.get('code');
+  const next = request.nextUrl.searchParams.get('next') ?? '/';
+
+  const safeNext =
+    next.startsWith('/') && !next.startsWith('//') ? next : '/';
+
+  const redirectOrigin = getRedirectOrigin(request);
+  const redirectUrl = `${redirectOrigin}${safeNext}`;
+
+  let response = NextResponse.redirect(redirectUrl);
+
+  if (!code) {
+    return response;
+  }
+
+  const supabase = createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          response = NextResponse.redirect(redirectUrl);
+
+          cookiesToSet.forEach(({ name, value, options }) => {
+            response.cookies.set(name, value, options);
+          });
+        },
+      },
+    }
+  );
+
+  const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+  if (error) {
+    console.error('Callback exchange error:', error);
+    return NextResponse.redirect(`${redirectOrigin}/`);
+  }
+
+  return response;
 }
