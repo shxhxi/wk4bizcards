@@ -3,7 +3,7 @@ import { createSupabaseServerClient } from '../lib/supabase/server';
 import CardsDirectory from '../components/cards-directory';
 
 type Category = {
-  id?: string;
+  id: string;
   name: string;
   color: string;
 };
@@ -52,6 +52,7 @@ export default async function HomePage() {
             website,
             category_id,
             categories:category_id (
+              id,
               name,
               color
             )
@@ -103,7 +104,7 @@ export default async function HomePage() {
         </p>
       </div>
 
-      <CardsDirectory cards={cards} categories={categories} />
+      <CardsDirectory initialCards={cards} categories={categories} />
     </main>
   );
 }
