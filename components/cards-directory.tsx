@@ -49,6 +49,8 @@ const TAILWIND_CATEGORY_CLASS_SAFELIST = [
   'bg-pink-100 text-pink-800',
 ] as const;
 
+const ADMIN_EMAIL = (process.env.NEXT_PUBLIC_ADMIN_EMAIL ?? '').trim().toLowerCase();
+
 function sortCards(cards: CardRow[]) {
   return [...cards].sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -76,6 +78,61 @@ function getPhoneHref(phone: string) {
   return `tel:${phone.replace(/[^\d+]/g, '')}`;
 }
 
+function PlusIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+function PencilIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5Z" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 6h18" />
+      <path d="M8 6V4h8v2" />
+      <path d="M19 6l-1 14H6L5 6" />
+      <path d="M10 11v6M14 11v6" />
+    </svg>
+  );
+}
+
 export default function CardsDirectory({ initialCards, categories }: Props) {
   const [cards, setCards] = useState<CardRow[]>(sortCards(initialCards));
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
@@ -87,6 +144,7 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [addFormData, setAddFormData] = useState(EMPTY_FORM);
   const [adding, setAdding] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     const syncUser = async () => {
@@ -107,6 +165,16 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  const isAdmin =
+    !!user?.email && !!ADMIN_EMAIL && user.email.toLowerCase() === ADMIN_EMAIL;
+
+  useEffect(() => {
+    if (!isAdmin) {
+      setShowAddForm(false);
+      setEditingId(null);
+    }
+  }, [isAdmin]);
 
   const filteredCards = useMemo(() => {
     if (selectedCategory === 'All') return cards;
@@ -235,9 +303,32 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
     setAdding(false);
   };
 
+  const handleDelete = async (id: string, name: string) => {
+    const confirmed = window.confirm(`Delete ${name}'s business card?`);
+    if (!confirmed) return;
+
+    setDeletingId(id);
+
+    const { error } = await supabase.from('cards').delete().eq('id', id);
+
+    if (error) {
+      alert(`Delete failed: ${error.message}`);
+      setDeletingId(null);
+      return;
+    }
+
+    setCards((prev) => prev.filter((card) => card.id !== id));
+
+    if (editingId === id) {
+      setEditingId(null);
+    }
+
+    setDeletingId(null);
+  };
+
   return (
     <>
-      {user ? (
+      {isAdmin ? (
         <div className="mb-8 flex justify-start">
           <button
             type="button"
@@ -246,16 +337,16 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
               setAddFormData(EMPTY_FORM);
             }}
             className="inline-flex items-center justify-center gap-2 rounded-full bg-sky-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-sky-700"
+            aria-label={showAddForm ? 'Cancel adding business card' : 'Add business card'}
+            title={showAddForm ? 'Cancel' : 'Add business card'}
           >
-            <span className="text-lg leading-none">
-              {showAddForm ? '✕' : '+'}
-            </span>
+            <PlusIcon />
             {showAddForm ? 'Cancel' : 'Add Business Card'}
           </button>
         </div>
       ) : null}
 
-      {user && showAddForm ? (
+      {isAdmin && showAddForm ? (
         <div className="mb-10 rounded-3xl border border-black/5 bg-white/85 p-6 shadow-sm dark:border-white/10 dark:bg-zinc-900/85">
           <h2 className="mb-6 text-lg font-semibold text-zinc-900 dark:text-zinc-100">
             New Business Card
@@ -458,6 +549,7 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
         <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
           {filteredCards.map((card) => {
             const isEditing = editingId === card.id;
+            const isDeleting = deletingId === card.id;
 
             return (
               <article
@@ -619,14 +711,29 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
                           {card.company}
                         </p>
 
-                        {user ? (
-                          <button
-                            type="button"
-                            onClick={() => handleEditClick(card)}
-                            className="mt-3 rounded-full bg-zinc-100 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-sky-700 transition hover:bg-sky-600 hover:text-white dark:bg-zinc-800 dark:text-sky-300 dark:hover:bg-sky-500 dark:hover:text-white"
-                          >
-                            Edit Card
-                          </button>
+                        {isAdmin ? (
+                          <div className="mt-3 flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleEditClick(card)}
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-zinc-100 text-sky-700 transition hover:bg-sky-600 hover:text-white dark:bg-zinc-800 dark:text-sky-300 dark:hover:bg-sky-500 dark:hover:text-white"
+                              aria-label={`Edit ${card.name}`}
+                              title={`Edit ${card.name}`}
+                            >
+                              <PencilIcon />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(card.id, card.name)}
+                              disabled={isDeleting}
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-zinc-100 text-red-600 transition hover:bg-red-600 hover:text-white disabled:opacity-50 dark:bg-zinc-800 dark:text-red-400 dark:hover:bg-red-500 dark:hover:text-white"
+                              aria-label={`Delete ${card.name}`}
+                              title={`Delete ${card.name}`}
+                            >
+                              <TrashIcon />
+                            </button>
+                          </div>
                         ) : null}
                       </>
                     )}
