@@ -1,10 +1,11 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { Toaster } from 'sonner';
 import ThemeToggle from '../components/theme-toggle';
 import AuthStatus from '../components/auth-status';
 
 export const metadata: Metadata = {
-  title: 'WK4 Biz Cards',
+  title: 'WK3 Biz Cards',
   description: 'Business card directory',
 };
 
@@ -22,6 +23,15 @@ export default function RootLayout({
         </header>
 
         {children}
+
+        <Toaster
+          position="top-center"
+          richColors
+          toastOptions={{
+            duration: 4000,
+            style: { fontSize: '14px' },
+          }}
+        />
       </body>
     </html>
   );

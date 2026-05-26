@@ -1,8 +1,11 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase/client';
+import { isAdminUser } from '../lib/auth';
+import { toast } from 'sonner';
 
 export default function AuthStatus() {
   const [user, setUser] = useState<User | null>(null);
@@ -21,7 +24,7 @@ export default function AuthStatus() {
       setReady(true);
     };
 
-    loadUser();
+    loadUser(); 
 
     const {
       data: { subscription },
@@ -47,7 +50,7 @@ export default function AuthStatus() {
     });
 
     if (error) {
-      alert(`Sign in failed: ${error.message}`);
+      toast.error(`Sign in failed: ${error.message}`, { duration: 6000 });
     }
   };
 
@@ -55,7 +58,7 @@ export default function AuthStatus() {
     const { error } = await supabase.auth.signOut();
 
     if (error) {
-      alert(`Sign out failed: ${error.message}`);
+      toast.error(`Sign out failed: ${error.message}`, { duration: 6000 });
     }
   };
 
@@ -80,11 +83,22 @@ export default function AuthStatus() {
     );
   }
 
+  const isAdmin = isAdminUser(user.email);
+
   return (
     <div className="flex items-center gap-3 rounded-full border border-black/5 bg-white/80 px-4 py-2 shadow-sm dark:border-white/10 dark:bg-zinc-900/80">
       <span className="max-w-[240px] truncate text-sm font-medium text-zinc-700 dark:text-zinc-200">
         {user.email}
       </span>
+
+      {isAdmin ? (
+        <Link
+          href="/admin/submissions"
+          className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-800 transition hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-200 dark:hover:bg-emerald-900/60"
+        >
+          Admin
+        </Link>
+      ) : null}
 
       <button
         type="button"

@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       cards: {
         Row: {
+          approved_at: string | null
           category_id: string
           company: string
           created_at: string
@@ -23,11 +24,15 @@ export type Database = {
           id: string
           name: string
           phone: string | null
+          profile_photo_url: string | null
+          session_id: string | null
+          status: string
           title: string
           updated_at: string
           website: string | null
         }
         Insert: {
+          approved_at?: string | null
           category_id: string
           company: string
           created_at?: string
@@ -35,11 +40,15 @@ export type Database = {
           id?: string
           name: string
           phone?: string | null
+          profile_photo_url?: string | null
+          session_id?: string | null
+          status?: string
           title: string
           updated_at?: string
           website?: string | null
         }
         Update: {
+          approved_at?: string | null
           category_id?: string
           company?: string
           created_at?: string
@@ -47,6 +56,9 @@ export type Database = {
           id?: string
           name?: string
           phone?: string | null
+          profile_photo_url?: string | null
+          session_id?: string | null
+          status?: string
           title?: string
           updated_at?: string
           website?: string | null

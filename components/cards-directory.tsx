@@ -15,6 +15,7 @@ import type {
   CardRow,
   CardWritePayload,
 } from '../lib/types';
+import { toast } from 'sonner';
 
 type Props = {
   initialCards: CardRow[];
@@ -281,7 +282,7 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
     const payload = buildCardPayload(editFormData);
 
     if (!isPayloadValid(payload)) {
-      alert('Name, title, company, email, and category are required.');
+      toast.error('Name, title, company, email, and category are required.');
       return;
     }
 
@@ -290,7 +291,7 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
     const { error } = await supabase.from('cards').update(payload).eq('id', id);
 
     if (error) {
-      alert(`Update failed: ${error.message}`);
+      toast.error(`Update failed: ${error.message}`, { duration: 6000 });
       setSavingId(null);
       return;
     }
@@ -319,7 +320,7 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
     const payload = buildCardPayload(addFormData);
 
     if (!isPayloadValid(payload)) {
-      alert('Name, title, company, email, and category are required.');
+      toast.error('Name, title, company, email, and category are required.');
       return;
     }
 
@@ -343,7 +344,7 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
       .single();
 
     if (error) {
-      alert(`Add failed: ${error.message}`);
+      toast.error(`Add failed: ${error.message}`, { duration: 6000 });
       setAdding(false);
       return;
     }
@@ -374,7 +375,7 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
     const { error } = await supabase.from('cards').delete().eq('id', id);
 
     if (error) {
-      alert(`Delete failed: ${error.message}`);
+      toast.error(`Delete failed: ${error.message}`, { duration: 6000 });
       setDeletingId(null);
       return;
     }
