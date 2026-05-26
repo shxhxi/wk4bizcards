@@ -78,7 +78,13 @@ export default function SubmitPage() {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    if (!form.name.trim() || !form.title.trim() || !form.company.trim() || !form.email.trim() || !form.category_id) {
+    if (
+      !form.name.trim() ||
+      !form.title.trim() ||
+      !form.company.trim() ||
+      !form.email.trim() ||
+      !form.category_id
+    ) {
       toast.error('Name, title, company, email, and category are required.');
       return;
     }
@@ -115,14 +121,23 @@ export default function SubmitPage() {
 
   if (submitted) {
     return (
-      <main className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-10 max-w-md w-full text-center">
-          <div className="text-5xl mb-4">✅</div>
-          <h2 className="text-2xl font-bold text-slate-900 mb-2">Submitted for Review</h2>
-          <p className="text-slate-500">
-            Thank you. Your business card has been submitted and will appear in the directory once approved.
+      <main className="mx-auto flex min-h-[calc(100vh-120px)] max-w-xl items-center justify-center px-4 py-12">
+        <div className="w-full rounded-3xl border border-black/5 bg-white/85 p-10 text-center shadow-sm dark:border-white/10 dark:bg-zinc-900/85">
+          <div className="mb-4 text-5xl">✅</div>
+
+          <h2 className="mb-2 text-2xl font-bold text-zinc-900 dark:text-zinc-100">
+            Submitted for Review
+          </h2>
+
+          <p className="text-zinc-500 dark:text-zinc-400">
+            Thank you. Your business card has been submitted and will appear in the
+            directory once approved.
           </p>
-          <Link href="/" className="mt-6 inline-block text-sm font-semibold text-blue-600 hover:underline">
+
+          <Link
+            href="/"
+            className="mt-6 inline-block text-sm font-semibold text-sky-600 hover:underline dark:text-sky-400"
+          >
             ← Back to Directory
           </Link>
         </div>
@@ -131,98 +146,118 @@ export default function SubmitPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 py-12 px-4">
-      <div className="max-w-xl mx-auto">
-        <div className="mb-8">
-          <Link href="/" className="text-sm text-slate-500 hover:text-slate-700">
-            ← Back to Directory
-          </Link>
-          <h1 className="text-3xl font-extrabold text-slate-900 mt-3">Submit Your Business Card</h1>
-          <p className="text-slate-500 mt-2">
-            Fill in your details below. Your card will be reviewed before appearing in the directory.
-          </p>
-        </div>
+    <main className="mx-auto max-w-xl px-4 py-12">
+      <div className="mb-8">
+        <Link
+          href="/"
+          className="text-sm text-zinc-500 transition hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+        >
+          ← Back to Directory
+        </Link>
 
-        <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {[
-              { label: 'Name', key: 'name', required: true, placeholder: 'Full Name' },
-              { label: 'Title', key: 'title', required: true, placeholder: 'Job Title' },
-              { label: 'Company', key: 'company', required: true, placeholder: 'Company Name' },
-              { label: 'Email', key: 'email', required: true, placeholder: 'email@example.com', type: 'email' },
-              { label: 'Phone', key: 'phone', placeholder: '555-0100' },
-              { label: 'Website', key: 'website', placeholder: 'example.com' },
-            ].map(({ label, key, required, placeholder, type }) => (
-              <div key={key} className={key === 'website' ? 'sm:col-span-2' : ''}>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
-                  {label} {required ? <span className="text-red-500">*</span> : null}
-                </label>
-                <input
-                  type={type || 'text'}
-                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none"
-                  value={form[key as keyof SubmitForm]}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, [key]: e.target.value }))
-                  }
-                  placeholder={placeholder}
-                />
-              </div>
-            ))}
+        <h1 className="mt-3 text-3xl font-extrabold tracking-tight text-zinc-900 dark:text-zinc-100">
+          Submit Your Business Card
+        </h1>
 
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
-                Category <span className="text-red-500">*</span>
+        <p className="mt-2 text-zinc-600 dark:text-zinc-300">
+          Fill in your details below. Your card will be reviewed before appearing in
+          the directory.
+        </p>
+      </div>
+
+      <form
+        onSubmit={handleSubmit}
+        className="rounded-3xl border border-black/5 bg-white/85 p-8 shadow-sm dark:border-white/10 dark:bg-zinc-900/85"
+      >
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {[
+            { label: 'Name', key: 'name', required: true, placeholder: 'Full Name' },
+            { label: 'Title', key: 'title', required: true, placeholder: 'Job Title' },
+            { label: 'Company', key: 'company', required: true, placeholder: 'Company Name' },
+            {
+              label: 'Email',
+              key: 'email',
+              required: true,
+              placeholder: 'email@example.com',
+              type: 'email',
+            },
+            { label: 'Phone', key: 'phone', placeholder: '555-0100' },
+            { label: 'Website', key: 'website', placeholder: 'https://example.com'},
+          ].map(({ label, key, required, placeholder, type }) => (
+            <div key={key} className={key === 'website' ? 'sm:col-span-2' : ''}>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                {label} {required ? <span className="text-red-500">*</span> : null}
               </label>
-              <select
-                className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none"
-                value={form.category_id}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, category_id: e.target.value }))
-                }
-                disabled={loadingCategories}
-              >
-                <option value="">Select a category</option>
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
-                Profile Photo <span className="font-normal text-slate-400">(optional, PNG/JPG, max 2MB)</span>
-              </label>
-
-              {preview ? (
-                <img
-                  src={preview}
-                  alt="Preview"
-                  className="w-20 h-20 rounded-full object-cover mb-3 ring-2 ring-slate-200"
-                />
-              ) : null}
 
               <input
-                type="file"
-                accept="image/png,image/jpeg"
-                onChange={handlePhotoChange}
-                className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200"
+                type={type || 'text'}
+                className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+                value={form[key as keyof SubmitForm]}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, [key]: e.target.value }))
+                }
+                placeholder={placeholder}
               />
             </div>
+          ))}
+
+          <div className="sm:col-span-2">
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+              Category <span className="text-red-500">*</span>
+            </label>
+
+            <select
+              className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+              value={form.category_id}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, category_id: e.target.value }))
+              }
+              disabled={loadingCategories}
+            >
+              <option value="">Select a category</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
           </div>
 
-          <div className="mt-6 flex justify-end">
-            <button
-              type="submit"
-              disabled={submitting}
-              className="px-8 py-2.5 rounded-full text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition-all disabled:opacity-50"
-            >
-              {submitting ? 'Submitting...' : 'Submit for Review'}
-            </button>
+          <div className="sm:col-span-2">
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+              Profile Photo{' '}
+              <span className="font-normal normal-case tracking-normal text-zinc-400 dark:text-zinc-500">
+                (optional, PNG/JPG, max 2MB)
+              </span>
+            </label>
+
+            {preview ? (
+              <img
+                src={preview}
+                alt="Preview"
+                className="mb-3 h-20 w-20 rounded-full object-cover ring-2 ring-zinc-200 dark:ring-zinc-700"
+              />
+            ) : null}
+
+            <input
+              type="file"
+              accept="image/png,image/jpeg"
+              onChange={handlePhotoChange}
+              className="w-full text-sm text-zinc-500 file:mr-4 file:rounded-full file:border-0 file:bg-zinc-100 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-zinc-700 hover:file:bg-zinc-200 dark:text-zinc-400 dark:file:bg-zinc-800 dark:file:text-zinc-200 dark:hover:file:bg-zinc-700"
+            />
           </div>
-        </form>
-      </div>
+        </div>
+
+        <div className="mt-6 flex justify-end">
+          <button
+            type="submit"
+            disabled={submitting}
+            className="rounded-full bg-sky-600 px-8 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700 disabled:opacity-50"
+          >
+            {submitting ? 'Submitting...' : 'Submit for Review'}
+          </button>
+        </div>
+      </form>
     </main>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
+import { toast } from 'sonner';
 import { supabase } from '../lib/supabase/client';
 import { isAdminUser } from '../lib/auth';
 import {
@@ -15,7 +16,6 @@ import type {
   CardRow,
   CardWritePayload,
 } from '../lib/types';
-import { toast } from 'sonner';
 
 type Props = {
   initialCards: CardRow[];
@@ -44,8 +44,12 @@ function sortCards(cards: CardRow[]) {
   return [...cards].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function getAvatarUrl(name: string) {
+function getFallbackAvatarUrl(name: string) {
   return `https://api.dicebear.com/9.x/avataaars/svg?seed=${encodeURIComponent(name)}`;
+}
+
+function getCardAvatarUrl(card: CardRow) {
+  return card.profile_photo_url || getFallbackAvatarUrl(card.name);
 }
 
 function getWebsiteLabel(url: string) {
@@ -87,6 +91,22 @@ function isPayloadValid(payload: CardWritePayload) {
     payload.email &&
     payload.category_id
   );
+}
+
+function getStoragePathFromPublicUrl(url: string) {
+  const markers = [
+    '/storage/v1/object/public/profile-photos/',
+    '/profile-photos/',
+  ];
+
+  for (const marker of markers) {
+    const index = url.indexOf(marker);
+    if (index !== -1) {
+      return decodeURIComponent(url.slice(index + marker.length));
+    }
+  }
+
+  return null;
 }
 
 function PlusIcon() {
@@ -211,7 +231,9 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [addFormData, setAddFormData] = useState<CardFormData>(EMPTY_FORM);
   const [adding, setAdding] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const [deleteTarget, setDeleteTarget] = useState<CardRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     setCards(sortCards(initialCards));
@@ -251,6 +273,7 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
     if (!isAdmin) {
       setShowAddForm(false);
       setEditingId(null);
+      setDeleteTarget(null);
     }
   }, [isAdmin]);
 
@@ -314,6 +337,7 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
 
     setSavingId(null);
     setEditingId(null);
+    toast.success('Card updated.');
   };
 
   const handleAdd = async () => {
@@ -338,7 +362,13 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
           phone,
           email,
           website,
-          category_id
+          category_id,
+          created_at,
+          updated_at,
+          status,
+          profile_photo_url,
+          approved_at,
+          session_id
         `
       )
       .single();
@@ -364,29 +394,49 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
     setAddFormData(EMPTY_FORM);
     setShowAddForm(false);
     setAdding(false);
+    toast.success('Card added.');
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    const confirmed = window.confirm(`Delete ${name}'s business card?`);
-    if (!confirmed) return;
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
 
-    setDeletingId(id);
+    setDeleting(true);
 
-    const { error } = await supabase.from('cards').delete().eq('id', id);
+    try {
+      if (deleteTarget.profile_photo_url) {
+        const path = getStoragePathFromPublicUrl(deleteTarget.profile_photo_url);
 
-    if (error) {
-      toast.error(`Delete failed: ${error.message}`, { duration: 6000 });
-      setDeletingId(null);
-      return;
+        if (path) {
+          const { error: storageError } = await supabase.storage
+            .from('profile-photos')
+            .remove([path]);
+
+          if (storageError) {
+            console.warn('Storage cleanup failed:', storageError.message);
+          }
+        }
+      }
+
+      const { error } = await supabase
+        .from('cards')
+        .delete()
+        .eq('id', deleteTarget.id);
+
+      if (error) {
+        toast.error(`Delete failed: ${error.message}`, { duration: 6000 });
+        return;
+      }
+
+      setCards((prev) => prev.filter((card) => card.id !== deleteTarget.id));
+      toast.success(`${deleteTarget.name}'s card has been deleted.`);
+      setDeleteTarget(null);
+
+      if (editingId === deleteTarget.id) {
+        setEditingId(null);
+      }
+    } finally {
+      setDeleting(false);
     }
-
-    setCards((prev) => prev.filter((card) => card.id !== id));
-
-    if (editingId === id) {
-      setEditingId(null);
-    }
-
-    setDeletingId(null);
   };
 
   return (
@@ -482,7 +532,7 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
           {addFormData.name.trim() ? (
             <div className="mt-5 flex items-center gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-950">
               <img
-                src={getAvatarUrl(addFormData.name)}
+                src={getFallbackAvatarUrl(addFormData.name)}
                 alt="Avatar preview"
                 className="h-10 w-10 rounded-full bg-zinc-200"
               />
@@ -556,7 +606,6 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
         <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
           {filteredCards.map((card) => {
             const isEditing = editingId === card.id;
-            const isDeleting = deletingId === card.id;
             const isSaving = savingId === card.id;
 
             return (
@@ -566,13 +615,13 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
               >
                 <div className="relative flex items-start gap-4">
                   <img
-                    src={getAvatarUrl(card.name)}
+                    src={getCardAvatarUrl(card)}
                     alt={`${card.name} avatar`}
                     width={72}
                     height={72}
                     loading="lazy"
                     decoding="async"
-                    className="h-[72px] w-[72px] rounded-2xl border border-black/5 bg-gradient-to-br from-sky-100 to-violet-100 shadow-sm dark:border-white/10 dark:from-sky-500/10 dark:to-violet-500/10"
+                    className="h-[72px] w-[72px] rounded-2xl border border-black/5 bg-gradient-to-br from-sky-100 to-violet-100 object-cover shadow-sm dark:border-white/10 dark:from-sky-500/10 dark:to-violet-500/10"
                   />
 
                   <div className="min-w-0 flex-1">
@@ -696,9 +745,8 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
 
                               <button
                                 type="button"
-                                onClick={() => handleDelete(card.id, card.name)}
-                                disabled={isDeleting}
-                                className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 text-red-600 transition hover:bg-red-600 hover:text-white disabled:opacity-50 dark:bg-zinc-800 dark:text-red-400 dark:hover:bg-red-500 dark:hover:text-white"
+                                onClick={() => setDeleteTarget(card)}
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 text-red-600 transition hover:bg-red-600 hover:text-white dark:bg-zinc-800 dark:text-red-400 dark:hover:bg-red-500 dark:hover:text-white"
                                 aria-label={`Delete ${card.name}`}
                                 title={`Delete ${card.name}`}
                               >
@@ -770,6 +818,39 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
           })}
         </div>
       )}
+
+      {deleteTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-xl dark:bg-zinc-900">
+            <h3 className="mb-2 text-lg font-bold text-slate-900 dark:text-zinc-100">
+              Delete Business Card
+            </h3>
+
+            <p className="mb-6 text-sm text-slate-500 dark:text-zinc-400">
+              Are you sure you want to delete <strong>{deleteTarget.name}</strong>
+              {"'"}s card? This action cannot be undone.
+            </p>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+                className="rounded-full bg-slate-100 px-5 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-200 disabled:opacity-50 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="rounded-full bg-red-600 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="hidden">
         {TAILWIND_CATEGORY_CLASS_SAFELIST.map((classes) => (

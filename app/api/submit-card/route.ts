@@ -8,6 +8,13 @@ const ALLOWED_TYPES = ['image/jpeg', 'image/png'];
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+function normalizeWebsiteInput(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
@@ -17,7 +24,7 @@ export async function POST(request: Request) {
     const company = String(formData.get('company') ?? '').trim();
     const email = String(formData.get('email') ?? '').trim();
     const phone = String(formData.get('phone') ?? '').trim();
-    const website = String(formData.get('website') ?? '').trim();
+    const website = normalizeWebsiteInput(String(formData.get('website') ?? ''));
     const category_id = String(formData.get('category_id') ?? '').trim();
     const photoValue = formData.get('photo');
 
@@ -88,7 +95,7 @@ export async function POST(request: Request) {
           company,
           email,
           phone: phone || null,
-          website: website || null,
+          website,
           category_id,
           status: 'pending',
           session_id: sessionId,
