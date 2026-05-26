@@ -8,6 +8,7 @@ export const EMPTY_FORM: CardFormData = {
   phone: '',
   website: '',
   category_id: '',
+  bio: '',
 };
 
 export const FIELD_CLASS =

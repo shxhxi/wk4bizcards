@@ -20,9 +20,10 @@ export type CardFormData = {
   phone: string;
   website: string;
   category_id: string;
+  bio: string;
 };
 
 export type CardWritePayload = Pick<
   TablesInsert<'cards'>,
-  'name' | 'title' | 'company' | 'email' | 'phone' | 'website' | 'category_id'
+  'name' | 'title' | 'company' | 'email' | 'phone' | 'website' | 'category_id' | 'bio'
 >;

@@ -1,7 +1,7 @@
 import { connection } from 'next/server';
-import Link from 'next/link';
 import { createSupabaseServerClient } from '../lib/supabase/server';
 import CardsDirectory from '../components/cards-directory';
+import HeaderActionButton from '../components/header-action-button';
 import type { Category, CardRow, CardRowFromQuery } from '../lib/types';
 
 function normalizeCard(card: CardRowFromQuery): CardRow {
@@ -40,6 +40,7 @@ export default async function HomePage() {
           profile_photo_url,
           approved_at,
           session_id,
+          bio,
           categories:category_id (
             id,
             name,
@@ -93,12 +94,7 @@ export default async function HomePage() {
           </p>
         </div>
 
-        <Link
-          href="/submit"
-          className="inline-flex items-center justify-center rounded-full bg-sky-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700"
-        >
-          Submit a Card
-        </Link>
+        <HeaderActionButton />
       </div>
 
       <CardsDirectory initialCards={cards} categories={categories} />

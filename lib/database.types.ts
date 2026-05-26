@@ -17,6 +17,7 @@ export type Database = {
       cards: {
         Row: {
           approved_at: string | null
+          bio: string | null
           category_id: string
           company: string
           created_at: string
@@ -33,6 +34,7 @@ export type Database = {
         }
         Insert: {
           approved_at?: string | null
+          bio?: string | null
           category_id: string
           company: string
           created_at?: string
@@ -49,6 +51,7 @@ export type Database = {
         }
         Update: {
           approved_at?: string | null
+          bio?: string | null
           category_id?: string
           company?: string
           created_at?: string

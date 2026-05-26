@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { toast } from 'sonner';
 import { supabase } from '../lib/supabase/client';
@@ -40,6 +40,22 @@ type SelectFieldProps = {
   required?: boolean;
 };
 
+type AutoGrowTextareaFieldProps = {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  required?: boolean;
+  className?: string;
+};
+
+const BIO_CLAMP_STYLE: CSSProperties = {
+  display: '-webkit-box',
+  WebkitLineClamp: 3,
+  WebkitBoxOrient: 'vertical',
+  overflow: 'hidden',
+};
+
 function sortCards(cards: CardRow[]) {
   return [...cards].sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -71,28 +87,6 @@ function getPhoneHref(phone: string) {
   return `tel:${phone.replace(/[^\d+]/g, '')}`;
 }
 
-function buildCardPayload(formData: CardFormData): CardWritePayload {
-  return {
-    name: formData.name.trim(),
-    title: formData.title.trim(),
-    company: formData.company.trim(),
-    email: formData.email.trim(),
-    phone: formData.phone.trim() || null,
-    website: normalizeWebsiteInput(formData.website),
-    category_id: formData.category_id.trim(),
-  };
-}
-
-function isPayloadValid(payload: CardWritePayload) {
-  return !!(
-    payload.name &&
-    payload.title &&
-    payload.company &&
-    payload.email &&
-    payload.category_id
-  );
-}
-
 function getStoragePathFromPublicUrl(url: string) {
   const markers = [
     '/storage/v1/object/public/profile-photos/',
@@ -109,20 +103,34 @@ function getStoragePathFromPublicUrl(url: string) {
   return null;
 }
 
-function PlusIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className="h-4 w-4"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M12 5v14M5 12h14" />
-    </svg>
+function buildCardPayload(formData: CardFormData): CardWritePayload {
+  return {
+    name: formData.name.trim(),
+    title: formData.title.trim(),
+    company: formData.company.trim(),
+    email: formData.email.trim(),
+    phone: formData.phone.trim() || null,
+    website: normalizeWebsiteInput(formData.website),
+    category_id: formData.category_id.trim(),
+    bio: formData.bio.trim() || null,
+  };
+}
+
+function isPayloadValid(payload: CardWritePayload) {
+  return !!(
+    payload.name &&
+    payload.title &&
+    payload.company &&
+    payload.email &&
+    payload.category_id
+  );
+}
+
+function canGenerateBio(formData: CardFormData) {
+  return !!(
+    formData.name.trim() &&
+    formData.title.trim() &&
+    formData.company.trim()
   );
 }
 
@@ -160,6 +168,25 @@ function TrashIcon() {
       <path d="M8 6V4h8v2" />
       <path d="M19 6l-1 14H6L5 6" />
       <path d="M10 11v6M14 11v6" />
+    </svg>
+  );
+}
+
+function SparklesIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 3l1.7 5.3L19 10l-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7L12 3Z" />
+      <path d="M19 3v4" />
+      <path d="M21 5h-4" />
     </svg>
   );
 }
@@ -219,6 +246,41 @@ function SelectField({
   );
 }
 
+function AutoGrowTextareaField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  required = false,
+  className = '',
+}: AutoGrowTextareaFieldProps) {
+  return (
+    <div className={className}>
+      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+        {label}
+        {required ? ' *' : ''}
+      </label>
+
+      <div className="relative">
+        <div
+          aria-hidden="true"
+          className={`${FIELD_CLASS} invisible min-h-[116px] whitespace-pre-wrap break-words leading-6`}
+        >
+          {value || placeholder || ' '}
+          {'\n'}
+        </div>
+
+        <textarea
+          className={`${FIELD_CLASS} absolute inset-0 h-full resize-none overflow-hidden leading-6`}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function CardsDirectory({ initialCards, categories }: Props) {
   const [cards, setCards] = useState<CardRow[]>(() => sortCards(initialCards));
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
@@ -227,13 +289,26 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editFormData, setEditFormData] = useState<CardFormData>(EMPTY_FORM);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [generatingEditBio, setGeneratingEditBio] = useState(false);
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [addFormData, setAddFormData] = useState<CardFormData>(EMPTY_FORM);
   const [adding, setAdding] = useState(false);
+  const [generatingAddBio, setGeneratingAddBio] = useState(false);
 
   const [deleteTarget, setDeleteTarget] = useState<CardRow | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  const [expandedBios, setExpandedBios] = useState<Record<string, boolean>>({});
+
+  const scrollToAddForm = () => {
+    window.requestAnimationFrame(() => {
+      document.getElementById('add-card-form')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    });
+  };
 
   useEffect(() => {
     setCards(sortCards(initialCards));
@@ -258,6 +333,34 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    const openAddForm = () => {
+      if (!isAdminUser(user?.email)) return;
+      setShowAddForm(true);
+      scrollToAddForm();
+    };
+
+    const closeAddForm = () => {
+      setShowAddForm(false);
+    };
+
+    window.addEventListener('open-add-card-form', openAddForm);
+    window.addEventListener('close-add-card-form', closeAddForm);
+
+    return () => {
+      window.removeEventListener('open-add-card-form', openAddForm);
+      window.removeEventListener('close-add-card-form', closeAddForm);
+    };
+  }, [user]);
+
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent('add-card-form-visibility', {
+        detail: { open: showAddForm },
+      })
+    );
+  }, [showAddForm]);
 
   const categoriesById = useMemo<Record<string, Category>>(
     () =>
@@ -288,6 +391,64 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
   const selectedEditCategory =
     editFormData.category_id ? categoriesById[editFormData.category_id] ?? null : null;
 
+  const streamGeneratedBio = async (
+    formData: CardFormData,
+    setForm: React.Dispatch<React.SetStateAction<CardFormData>>,
+    setGenerating: React.Dispatch<React.SetStateAction<boolean>>
+  ) => {
+    if (!canGenerateBio(formData)) {
+      toast.error('Fill in name, title, and company first.');
+      return;
+    }
+
+    setGenerating(true);
+    setForm((prev) => ({ ...prev, bio: '' }));
+
+    try {
+      const response = await fetch('/api/generate-bio', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: formData.name,
+          title: formData.title,
+          company: formData.company,
+          category: categoriesById[formData.category_id]?.name ?? '',
+        }),
+      });
+
+      if (!response.ok || !response.body) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error || 'Bio generation failed.');
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let generated = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        generated += decoder.decode(value, { stream: true });
+        setForm((prev) => ({ ...prev, bio: generated }));
+      }
+
+      if (!generated.trim()) {
+        throw new Error('No bio was generated.');
+      }
+
+      toast.success('Bio generated.');
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Bio generation failed.';
+      toast.error(message, { duration: 6000 });
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   const handleEditClick = (card: CardRow) => {
     setEditingId(card.id);
     setEditFormData({
@@ -298,6 +459,7 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
       phone: card.phone ?? '',
       website: card.website ?? '',
       category_id: card.category_id,
+      bio: card.bio ?? '',
     });
   };
 
@@ -352,7 +514,13 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
 
     const { data, error } = await supabase
       .from('cards')
-      .insert([payload])
+      .insert([
+        {
+          ...payload,
+          status: 'approved',
+          approved_at: new Date().toISOString(),
+        },
+      ])
       .select(
         `
           id,
@@ -368,7 +536,8 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
           status,
           profile_photo_url,
           approved_at,
-          session_id
+          session_id,
+          bio
         `
       )
       .single();
@@ -439,28 +608,20 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
     }
   };
 
+  const toggleBio = (id: string) => {
+    setExpandedBios((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
+  };
+
   return (
     <>
-      {isAdmin ? (
-        <div className="mb-8 flex justify-start">
-          <button
-            type="button"
-            onClick={() => {
-              setShowAddForm((prev) => !prev);
-              setAddFormData(EMPTY_FORM);
-            }}
-            className="inline-flex items-center justify-center gap-2 rounded-full bg-sky-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-sky-700"
-            aria-label={showAddForm ? 'Cancel adding business card' : 'Add business card'}
-            title={showAddForm ? 'Cancel' : 'Add business card'}
-          >
-            <PlusIcon />
-            {showAddForm ? 'Cancel' : 'Add Business Card'}
-          </button>
-        </div>
-      ) : null}
-
       {isAdmin && showAddForm ? (
-        <div className="mb-10 rounded-3xl border border-black/5 bg-white/85 p-6 shadow-sm dark:border-white/10 dark:bg-zinc-900/85">
+        <div
+          id="add-card-form"
+          className="mb-10 rounded-3xl border border-black/5 bg-white/85 p-6 shadow-sm dark:border-white/10 dark:bg-zinc-900/85"
+        >
           <h2 className="mb-6 text-lg font-semibold text-zinc-900 dark:text-zinc-100">
             New Business Card
           </h2>
@@ -517,6 +678,27 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
               placeholder="https://example.com"
               className="sm:col-span-2"
             />
+            <AutoGrowTextareaField
+              label="Bio"
+              value={addFormData.bio}
+              onChange={(value) => setAddFormData({ ...addFormData, bio: value })}
+              placeholder="Generate or write a short professional bio."
+              className="sm:col-span-2"
+            />
+          </div>
+
+          <div className="mt-3 flex justify-end">
+            <button
+              type="button"
+              onClick={() =>
+                streamGeneratedBio(addFormData, setAddFormData, setGeneratingAddBio)
+              }
+              disabled={!canGenerateBio(addFormData) || generatingAddBio}
+              className="inline-flex items-center gap-2 rounded-full bg-violet-600 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white shadow-sm transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <SparklesIcon />
+              {generatingAddBio ? 'Generating...' : 'Generate Bio'}
+            </button>
           </div>
 
           {selectedAddCategory ? (
@@ -607,6 +789,8 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
           {filteredCards.map((card) => {
             const isEditing = editingId === card.id;
             const isSaving = savingId === card.id;
+            const isBioExpanded = !!expandedBios[card.id];
+            const showBioToggle = (card.bio?.length ?? 0) > 180;
 
             return (
               <article
@@ -696,6 +880,32 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
                           }
                           placeholder="https://example.com"
                         />
+                        <AutoGrowTextareaField
+                          label="Bio"
+                          value={editFormData.bio}
+                          onChange={(value) =>
+                            setEditFormData({ ...editFormData, bio: value })
+                          }
+                          placeholder="Generate or write a short professional bio."
+                        />
+
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              streamGeneratedBio(
+                                editFormData,
+                                setEditFormData,
+                                setGeneratingEditBio
+                              )
+                            }
+                            disabled={!canGenerateBio(editFormData) || generatingEditBio}
+                            className="inline-flex items-center gap-2 rounded-full bg-violet-600 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white shadow-sm transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <SparklesIcon />
+                            {generatingEditBio ? 'Generating...' : 'Generate Bio'}
+                          </button>
+                        </div>
 
                         <div className="flex gap-2 pt-1">
                           <button
@@ -763,6 +973,27 @@ export default function CardsDirectory({ initialCards, categories }: Props) {
                         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
                           {card.company}
                         </p>
+
+                        {card.bio ? (
+                          <div className="mt-3">
+                            <p
+                              className="text-sm leading-6 text-zinc-600 dark:text-zinc-300"
+                              style={isBioExpanded ? undefined : BIO_CLAMP_STYLE}
+                            >
+                              {card.bio}
+                            </p>
+
+                            {showBioToggle ? (
+                              <button
+                                type="button"
+                                onClick={() => toggleBio(card.id)}
+                                className="mt-1 text-xs font-semibold text-sky-600 transition hover:text-sky-700 dark:text-sky-400 dark:hover:text-sky-300"
+                              >
+                                {isBioExpanded ? 'less' : '... more'}
+                              </button>
+                            ) : null}
+                          </div>
+                        ) : null}
                       </>
                     )}
                   </div>
